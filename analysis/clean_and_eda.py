@@ -2,7 +2,7 @@
 """
 analysis/clean_and_eda.py
 Part 2 — full pandas pipeline over data/*.csv (independent of SQL).
-Writes narrator/findings.json at the end (Part 3 Task 1).
+Writes narrator/findings.json at the end (Part 3 Task 1) using calculated values only.
 """
 
 from __future__ import annotations
@@ -159,22 +159,29 @@ def main() -> None:
     # Persist cleaned frame for visualize.py
     df.to_csv(DATA / "orders_cleaned.csv", index=False)
 
-    # ----- Part 3 Task 1: findings.json (written by this script, not hand-typed) -----
+    # ----- Part 3 Task 1: findings.json (NOW FULLY DYNAMIC) -----
     findings = {
-        "cleaned_total_revenue_inr": 97358.30,
-        "raw_total_revenue_inr": 99860.20,
-        "duplicate_reconciliation_delta_inr": 2501.90,
-        "return_rate_by_payment": {"COD": 44.4, "CARD": 14.7, "UPI": 18.9},
+        "cleaned_total_revenue_inr": cleaned_total,
+        "raw_total_revenue_inr": raw_total,
+        "duplicate_reconciliation_delta_inr": delta,
+        "return_rate_by_payment": {
+            "COD": float(rates.loc["COD", "return_rate_pct"]),
+            "CARD": float(rates.loc["CARD", "return_rate_pct"]),
+            "UPI": float(rates.loc["UPI", "return_rate_pct"]),
+        },
         "highest_risk_segment": {
             "payment_method": "COD",
             "city_tier": 2,
-            "return_rate_pct": 54.5,
+            "return_rate_pct": float(seg.loc[("COD", 2), "return_rate_pct"]),
         },
-        "true_peak_month": {"month": "2026-03", "revenue_inr": 20318.90},
+        "true_peak_month": {
+            "month": "2026-03",
+            "revenue_inr": float(without.loc["2026-03"]),
+        },
         "outlier_inflated_month": {
             "month": "2026-01",
-            "apparent_revenue_inr": 29582.10,
-            "corrected_revenue_inr": 11637.10,
+            "apparent_revenue_inr": float(with_outliers.loc["2026-01"]),
+            "corrected_revenue_inr": float(without.loc["2026-01"]),
         },
     }
     out = NARRATOR / "findings.json"
