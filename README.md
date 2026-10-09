@@ -1,3 +1,9 @@
+---
+
+### Author Declaration
+This complete end-to-end pipeline (SQL relational layer, Pandas cleaning & EDA, visualizations, and GenAI narrative with offline fallback) was independently designed, implemented, tested and documented by **Amarjit Kahlon** as the Capstone Project for the program **Data Analytics with AI & GenAI – E&ICT Academy, IIT Roorkee**.
+
+All logic, numbers and outputs were generated and verified by the author against the provided seed data.
 # Mamaearth Returns & Growth Intelligence Pipeline
 
 Capstone — Data Analytics with AI & Gen AI · E&ICT Academy IIT Roorkee  
