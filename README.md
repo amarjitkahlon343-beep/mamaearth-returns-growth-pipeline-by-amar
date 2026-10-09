@@ -5,9 +5,7 @@
 **Author:** Amarjit Kahlon
 
 One public GitHub repository. Every number in this brief is produced by running the three layers below against the committed seed data.
-
 ---
-
 ## Repository Structure
 /
 ├── README.md
@@ -36,9 +34,7 @@ text---
 1. **SQL Layer** loads the same CSVs into SQLite and answers relational questions on the *raw* 180 rows (gross revenue ₹99,860.20).
 2. **Python Layer** re-reads the same CSVs, cleans them (payment casing, 5 duplicates, imputations, IQR flags), and writes verified numbers to `narrator/findings.json` (cleaned revenue ₹97,358.30).
 3. **GenAI Layer** reads *only* `findings.json` and produces an SCR narrative (online Gemini or offline template). No layer invents a number the previous layer did not compute.
-
 ---
-
 ## 1. SQL Layer — Schema, Seed & Reports
 
 Requires SQLite 3 (or any engine that accepts the syntax in `schema.sql`).
@@ -89,39 +85,6 @@ Optional dependency for the online path only:
 Bashpip install google-genai
 
 Key Verified Figures
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 FigureValueRaw total revenue (Part 1)99,860.20Cleaned total revenue (Part 2)97,358.30Duplicate reconciliation delta2,501.90COD / CARD / UPI return rates44.4% / 14.7% / 18.9%Highest-risk segmentCOD + Tier-2 at 54.5%True peak month (outlier-corrected)March 20,318.90
 A reader who has never seen this repository can reproduce every number above by following this README from top to bottom.
 
