@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
-"""
-narrator/generate_narrative.py
-Part 3 — Gemini SCR narrative with offline fallback + Task 5 checker.
-"""
+# ============================================================
+# Author      : Amarjit Kahlon
+# Project     : Mamaearth Returns & Growth Intelligence Pipeline
+# Program     : Data Analytics with AI & GenAI · E&ICT Academy IIT Roorkee
+# Description : Gemini SCR narrator with offline fallback
+# ============================================================
 
 from __future__ import annotations
-
 import json
 import os
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-FINDINGS_PATH = ROOT / "narrator" / "findings.json"
-SAMPLE_OUT = ROOT / "narrator" / "sample_output.txt"
+FINDINGS_FILE = ROOT / "narrator" / "findings.json"
+SAMPLE_FILE = ROOT / "narrator" / "sample_output.txt"
 
-REQUIRED = [
+REQUIRED_FIGURES = [
     ("cleaned total revenue", ["97358.30", "97358.3", "97,358.30", "97,358.3"]),
     ("COD return rate", ["44.4"]),
     ("COD + Tier-2 return rate", ["54.5"]),
@@ -25,102 +26,97 @@ REQUIRED = [
 
 
 def load_findings() -> dict:
-    if not FINDINGS_PATH.exists():
-        raise SystemExit(f"Missing {FINDINGS_PATH}. Run analysis/clean_and_eda.py first.")
-    return json.loads(FINDINGS_PATH.read_text(encoding="utf-8"))
+    if not FINDINGS_FILE.exists():
+        raise SystemExit(f"Missing {FINDINGS_FILE}. Please run analysis/clean_and_eda.py first.")
+    return json.loads(FINDINGS_FILE.read_text(encoding="utf-8"))
 
 
 def generate_scr_narrative_offline(findings: dict) -> dict:
-    """Keyless, deterministic SCR template — same return shape as the online path."""
-    rev = findings["cleaned_total_revenue_inr"]
+    """Fully offline, deterministic SCR narrative built only from findings."""
+    cleaned = findings["cleaned_total_revenue_inr"]
     raw = findings["raw_total_revenue_inr"]
-    delta = findings["duplicate_reconciliation_delta_inr"]
+    gap = findings["duplicate_reconciliation_delta_inr"]
     rates = findings["return_rate_by_payment"]
     risk = findings["highest_risk_segment"]
     peak = findings["true_peak_month"]
     jan = findings["outlier_inflated_month"]
 
-    narrative = f"""Situation
-Mamaearth's Growth Analytics team processed 180 raw order lines through a relational store and a cleaned pandas pipeline. Gross revenue on the raw extract is ₹{raw:,.2f}. After removing five double-submit duplicates, cleaned total revenue is ₹{rev:,.2f} (reconciliation delta ₹{delta:,.2f}).
+    text = f"""Situation
+Mamaearth Growth Analytics processed 180 raw order lines. Gross revenue on the uncleaned extract stands at ₹{raw:,.2f}. After removing five double-submit duplicates the cleaned revenue is ₹{cleaned:,.2f} (reconciliation gap ₹{gap:,.2f}).
 
 Complication
-Returns are not uniform. COD posts a return rate of {rates['COD']}%, versus CARD at {rates['CARD']}% and UPI at {rates['UPI']}%. The risk concentrates further: the COD + Tier-2 segment reaches {risk['return_rate_pct']}% return rate — the single highest-risk slice. January appeared to lead monthly revenue at ₹{jan['apparent_revenue_inr']:,.2f}, but that was an artifact of two bulk quantity outliers; the true peak month is March at ₹{peak['revenue_inr']:,.2f}.
+Return behaviour is highly uneven. COD shows a return rate of {rates['COD']}%, compared with CARD at {rates['CARD']}% and UPI at {rates['UPI']}%. The risk is even more concentrated: COD orders from Tier-2 cities reach {risk['return_rate_pct']}% — the single highest-risk segment. January initially looked strongest at ₹{jan['apparent_revenue_inr']:,.2f}, but that figure was inflated by two bulk quantity outliers. The genuine peak month is March at ₹{peak['revenue_inr']:,.2f}.
 
 Resolution
-1. Restrict or partially prepay COD in Tier-2 cities where the {risk['return_rate_pct']}% return rate is concentrated.
-2. Block double-submit at checkout (customer + product + date) to eliminate the ₹{delta:,.2f} reconciliation gap.
-3. Investigate the two quantity outliers (25 and 30 units) before trusting January trend reads.
-4. Protect March inventory and marketing around the verified ₹{peak['revenue_inr']:,.2f} peak.
+1. Tighten COD policy especially in Tier-2 cities where return rate hits {risk['return_rate_pct']}%.
+2. Add a double-submit check at checkout (customer + product + date) to close the ₹{gap:,.2f} gap.
+3. Investigate the two quantity outliers (25 and 30 units) before relying on January trend numbers.
+4. Protect inventory and marketing focus around the verified March peak of ₹{peak['revenue_inr']:,.2f}.
 """
-    return {"status": "success", "narrative": narrative.strip(), "tokens": None}
+    return {"status": "success", "narrative": text.strip(), "tokens": None}
 
 
 def generate_scr_narrative(findings: dict) -> dict:
-    """
-    Online path via google-genai.
-    temperature=0.0 — factual business report, not creative writing.
-    """
+    """Online path using google-genai with locked parameters."""
     api_key = os.environ.get("GEMINI_API_KEY", "").strip() or os.environ.get("GOOGLE_API_KEY", "").strip()
     if not api_key:
-        return {
-            "status": "error",
-            "narrative": None,
-            "message": "No GEMINI_API_KEY / GOOGLE_API_KEY configured",
-        }
+        return {"status": "error", "narrative": None, "message": "No GEMINI_API_KEY / GOOGLE_API_KEY found"}
 
     try:
         from google import genai
         from google.genai import types
 
         client = genai.Client(api_key=api_key)
-        system_instruction = (
-            "You are a senior data analyst writing for Mamaearth's regional ops and finance heads. "
-            "Respond with exactly three labeled sections: Situation, Complication, Resolution. "
-            "Every number in the output must come from the supplied findings and appear with the same value — no invented statistics."
+
+        system_msg = (
+            "You are a senior data analyst writing for Mamaearth regional operations and finance heads. "
+            "Produce exactly three labeled sections: Situation, Complication, Resolution. "
+            "Every number must come from the supplied findings and keep the same value — invent nothing."
         )
-        user_prompt = (
-            "Write the SCR narrative from these verified findings only:\n"
-            + json.dumps(findings, indent=2)
-        )
-        # temperature=0.0 for determinism; max_output_tokens explicit; timeout via request options
+        user_msg = "Generate the SCR narrative using only these verified findings:\n" + json.dumps(findings, indent=2)
+
+        # temperature locked at 0.0 for factual reporting
         response = client.models.generate_content(
             model="gemini-2.0-flash",
-            contents=user_prompt,
+            contents=user_msg,
             config=types.GenerateContentConfig(
-                system_instruction=system_instruction,
+                system_instruction=system_msg,
                 temperature=0.0,
                 max_output_tokens=512,
-                http_options=types.HttpOptions(timeout=30000),  # 30s >= 10s minimum
+                http_options=types.HttpOptions(timeout=30000),
             ),
         )
-        text = (response.text or "").strip()
-        if not text:
-            return {"status": "error", "narrative": None, "message": "Empty Gemini response"}
-        tokens = None
+        narrative_text = (response.text or "").strip()
+        if not narrative_text:
+            return {"status": "error", "narrative": None, "message": "Empty response from Gemini"}
+
+        token_count = None
         try:
-            tokens = response.usage_metadata.total_token_count  # type: ignore[attr-defined]
+            token_count = response.usage_metadata.total_token_count
         except Exception:
             pass
-        return {"status": "success", "narrative": text, "tokens": tokens}
-    except Exception as err:  # noqa: BLE001
-        return {"status": "error", "narrative": None, "message": str(err)}
+
+        return {"status": "success", "narrative": narrative_text, "tokens": token_count}
+
+    except Exception as e:
+        return {"status": "error", "narrative": None, "message": str(e)}
 
 
 def check_narrative(text: str) -> bool:
-    """Task 5 — numeric accuracy checklist."""
-    norm = text.replace(",", "")
-    all_ok = True
-    print("=== Task 5 numeric accuracy checklist ===")
-    for label, variants in REQUIRED:
-        ok = any(v.replace(",", "") in norm for v in variants)
+    """Task 5 numeric accuracy checklist."""
+    cleaned_text = text.replace(",", "")
+    all_passed = True
+    print("=== Task 5 Numeric Accuracy Check ===")
+    for label, options in REQUIRED_FIGURES:
+        found = any(opt.replace(",", "") in cleaned_text for opt in options)
         if label.startswith("peak month"):
-            ok = ok and ("March" in text or "march" in text.lower())
-        status = "PASS" if ok else "FAIL"
-        if not ok:
-            all_ok = False
-        print(f"  {status}: {label} (need one of {variants})")
-    print("=== overall:", "PASS" if all_ok else "FAIL", "===")
-    return all_ok
+            found = found and ("March" in text or "march" in text.lower())
+        status = "PASS" if found else "FAIL"
+        if not found:
+            all_passed = False
+        print(f"  {status}: {label}")
+    print("=== Overall:", "PASS" if all_passed else "FAIL", "===")
+    return all_passed
 
 
 def main() -> None:
@@ -128,21 +124,21 @@ def main() -> None:
 
     result = generate_scr_narrative(findings)
     if result["status"] != "success":
-        print(f"[info] Online path unavailable ({result.get('message')}); using offline fallback.")
+        print(f"[info] Online path unavailable ({result.get('message')}). Switching to offline fallback.")
         result = generate_scr_narrative_offline(findings)
     else:
         print("[info] Online Gemini path succeeded.")
 
     narrative = result["narrative"]
-    print("\n----- narrative -----\n")
+    print("\n----- Generated Narrative -----\n")
     print(narrative)
-    print("\n----- end -----\n")
+    print("\n----- End of Narrative -----\n")
 
-    SAMPLE_OUT.write_text(narrative, encoding="utf-8")
-    print(f"Wrote {SAMPLE_OUT}")
+    SAMPLE_FILE.write_text(narrative, encoding="utf-8")
+    print(f"Saved sample → {SAMPLE_FILE}")
 
-    ok = check_narrative(narrative)
-    sys.exit(0 if ok else 1)
+    passed = check_narrative(narrative)
+    sys.exit(0 if passed else 1)
 
 
 if __name__ == "__main__":
